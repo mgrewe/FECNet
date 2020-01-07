@@ -5,12 +5,12 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 import argparse
+import pathlib as pl
 from models.FECNet import FECNet
 from models.mtcnn import MTCNN
 #from models.utils.detect_face import extract_face
 from torchvision.transforms import ToPILImage
 from PIL import Image
-import cv2
 
 
 def extract_face(img, box, image_size=160, margin=0, save_path=None):
@@ -56,44 +56,39 @@ if __name__ == '__main__':
 
     batch_size=1
 
+    parser = argparse.ArgumentParser(description='PyTorch FECNet inference')
+    parser.add_argument('dir')
+    parser.add_argument('csv')
+    args = parser.parse_args()
+    cdir = pl.Path(args.dir)
 
-    # set up seeds and gpu device
-    torch.manual_seed(0)
-    np.random.seed(0)
-    device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(0)
+    os.makedirs(cdir / 'detected', exist_ok=True)
+    output = open(args.csv,'w')
 
-    mtcnn = MTCNN()
+    mtcnn = MTCNN(image_size=224)
     fecnet = FECNet(pretrained=True)
-    Num_Param = sum(p.numel() for p in fecnet.parameters() if p.requires_grad)
-    print("Number of Trainable Parameters= %d" % (Num_Param))
 
-    img = Image.open('/nfs/visual/bzfgrewe/projects/latent_spaces/FECNet/data/own/test.jpg')
-    bbox, confidenxe, lm = mtcnn.detect(img,True)
-    print(bbox)
+    import sys
+    # faces = {}
+    for file in [e for e in cdir.iterdir() if e.is_file()]:
+        #if (file.parent / 'detected' / Path(file.name)).is_file():
+        print(file)
+        img = Image.open(file)
+        bbox, prob, lm = mtcnn.detect(img,True)
+        cropbox = np.maximum(bbox,0)
+        X = extract_face(img, image_size=224, box=cropbox[0], save_path=str(cdir / 'detected' / file.name))
 
-    cropbox = np.maximum(bbox,0)
-    X = extract_face(img, image_size=224, box=cropbox[0])
+        X = np.array([X,X,X]).astype(np.float32).reshape(-1, 3, 224, 224)
+        targets = torch.FloatTensor(X).view( 3, 3, 224, 224).cpu()
+        latent_code = fecnet.forward(x=targets)[0].detach().numpy()
+        print(prob)
+        line = ','.join([str(file.name),str(prob[0])])
+        line += ',' + ','.join(['%.5f' % num for num in latent_code])
+        output.write(line + os.linesep)
 
-    print(X.shape)
-    X = np.array([X,X,X]).astype(np.float32).reshape(-1, 3, 224, 224)
-    print(X.shape)
 
-    targets = torch.FloatTensor(X).view( 3, 3, 224, 224).cpu()
+    output.close()
 
-    #F.To
-    #ext.ToPILImage()
-    
-    #image = ToPILImage(ext)
-    #ext.save('/nfs/visual/bzfgrewe/projects/latent_spaces/FECNet/data/own/test_rect.jpg')
-
-    latent_code = fecnet.forward(x=targets)
-
-    print(latent_code)
-
-    cv2.imshow('jkhd',cv2.np.array(ext))
-    cv2.waitKey()
 
 
 
