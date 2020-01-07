@@ -24,7 +24,7 @@ class FECNet(nn.Module):
         depth = 100
         block_config = [5]
         efficient = True
-        self.Inc = InceptionResnetV1(pretrained='vggface2', device='cuda').eval()
+        self.Inc = InceptionResnetV1(pretrained='vggface2', device='cpu').eval()
         for param in self.Inc.parameters():
             param.requires_grad = False
         self.dense = DenseNet(growth_rate=growth_rate,
@@ -32,7 +32,7 @@ class FECNet(nn.Module):
                         num_classes=16,
                         small_inputs=True,
                         efficient=efficient,
-                        num_init_features=512).cuda()
+                        num_init_features=512).cpu()
 
         if (pretrained):
             load_weights(self)
@@ -85,4 +85,4 @@ def load_weights(mdl):
         save_response_content(response, cached_file)
 
 
-    mdl.load_state_dict(torch.load(cached_file))
+    mdl.load_state_dict(torch.load(cached_file, map_location=torch.device('cpu')))
